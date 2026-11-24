@@ -134,7 +134,8 @@ def create_app(config_path: str | None = None, start_loops: bool = True) -> Fast
             raise HTTPException(404)
         if g["genome"].get("engine") == "hummingbot":
             return {"name": orch.hb_nodes.deploy(gid, label="manual")}
-        return {"name": orch.ft.deploy(gid, g["genome"], label="manual")}
+        # the ONLY path that can create a real-money bot (station live mode + TCC_LIVE=1 + keys)
+        return {"name": orch.ft.deploy(gid, g["genome"], label="manual", allow_live=True)}
 
     @app.post("/api/bots/{name}/{action}", dependencies=[Depends(auth)])
     async def bot_action(name: str, action: str):

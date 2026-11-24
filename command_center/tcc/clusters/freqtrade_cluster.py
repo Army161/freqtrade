@@ -95,15 +95,14 @@ class FreqtradeCluster:
             p += 1
         return p
 
-    def deploy(self, genome_id: str, genome: dict, label: str = "") -> str:
-        name = f"ft-{genome_id[:8]}"
-        if any(b["name"] == name for b in self.bots()):
-            return name
-        live = self.st.get("mode") == "live" and os.environ.get("TCC_LIVE") == "1"
-        port = self._free_port()
-        user, pw = "tcc", secrets.token_urlsafe(16)
-        bdir = self.dir / name
-        bdir.mkdir(parents=True, exist_ok=True)
+    def _write_config(self, name: str, genome: dict, port: int, meta: dict) -> Path:
+        """(Re)generate a bot's config from the CURRENT environment.
+
+        Called on every (re)start so new keys / network settings in .env take effect after a
+        restart. A bot's paper/live status is fixed at deploy time (meta["live"]): switching the
+        station to live never turns existing paper bots into real-money bots.
+        """
+        live = bool(meta.get("live"))
         keys = None
         if live:
             keys = {"key": os.environ.get("TCC_EXCHANGE_KEY", ""),
@@ -115,15 +114,34 @@ class FreqtradeCluster:
             wallet=self.cfg["capital"]["paper_wallet_per_bot"],
             max_open_trades=self.cl.get("max_open_trades", 3), dry_run=not live,
             risk=self.cfg["risk"], bot_name=name, keys=keys,
-            api={"port": port, "username": user, "password": pw, "jwt": secrets.token_hex(24)})
+            api={"port": port, "username": meta["api_user"], "password": meta["api_pass"],
+                 "jwt": meta["jwt"]})
         conf["enable_protections"] = True
-        (bdir / "config.json").write_text(json.dumps(conf, indent=1))
-        os.chmod(bdir / "config.json", 0o600)
+        bdir = self.dir / name
+        bdir.mkdir(parents=True, exist_ok=True)
+        f = bdir / "config.json"
+        f.touch(mode=0o600, exist_ok=True)
+        os.chmod(f, 0o600)
+        f.write_text(json.dumps(conf, indent=1))
+        return f
+
+    def deploy(self, genome_id: str, genome: dict, label: str = "", allow_live: bool = False) -> str:
+        """Deploy a genome. Paper unless allow_live=True (only the operator's manual deploy passes
+        that) AND the station is in live mode. Seeds and agent promotions are always paper."""
+        name = f"ft-{genome_id[:8]}"
+        if any(b["name"] == name for b in self.bots()):
+            return name
+        live = allow_live and self.st.get("mode") == "live" and os.environ.get("TCC_LIVE") == "1"
+        if live and not (os.environ.get("TCC_EXCHANGE_KEY") and os.environ.get("TCC_EXCHANGE_SECRET")):
+            raise RuntimeError("live mode requested but TCC_EXCHANGE_KEY/SECRET are not set")
+        port = self._free_port()
+        meta = {"api_user": "tcc", "api_pass": secrets.token_urlsafe(16), "jwt": secrets.token_hex(24),
+                "label": label, "live": live}
+        cfg_path = self._write_config(name, genome, port, meta)
         self.store.execute(
             "INSERT INTO bots(name,engine,genome_id,port,status,config_path,started,meta) "
             "VALUES(?,?,?,?,?,?,?,?)",
-            (name, "freqtrade", genome_id, port, "starting", str(bdir / "config.json"), time.time(),
-             json.dumps({"api_user": user, "api_pass": pw, "label": label, "live": live})))
+            (name, "freqtrade", genome_id, port, "starting", str(cfg_path), time.time(), json.dumps(meta)))
         self.store.set_genome_status(genome_id, "live" if live else "incubating")
         self.store.event("info", "cluster", f"deployed {name} on :{port} ({'LIVE' if live else 'paper'})",
                          genome=genome_id, label=label)
@@ -131,7 +149,14 @@ class FreqtradeCluster:
         return name
 
     def _spawn(self, name: str) -> None:
+        bot = next(b for b in self.bots() if b["name"] == name)
+        meta = bot["meta"]
+        meta.setdefault("jwt", secrets.token_hex(24))  # bots deployed by older versions
+        g = self.store.genome(bot["genome_id"])
         bdir = self.dir / name
+        if g:
+            self._write_config(name, g["genome"], bot["port"], meta)
+            self.store.execute("UPDATE bots SET meta=? WHERE name=?", (json.dumps(meta), name))
         root = Path(self.st["freqtrade_root"]).resolve()
         cmd = [self.st["freqtrade_bin"], "trade", "-c", str(bdir / "config.json"),
                "--userdir", str(root / "user_data"),
@@ -179,6 +204,8 @@ class FreqtradeCluster:
                 # is this bot (after a container/host restart PIDs get reused by other processes)
                 alive = pid_matches(b["pid"], b["name"])
             if alive:
+                if b["restarts"] and time.time() - (b["started"] or 0) > 600:  # healthy 10 min: reset backoff
+                    self.store.execute("UPDATE bots SET restarts=0 WHERE name=?", (b["name"],))
                 continue
             now = time.time()
             if now < self._next_restart.get(b["name"], 0):

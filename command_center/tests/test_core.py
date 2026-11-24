@@ -198,3 +198,25 @@ def test_pid_matches_only_real_bot():
     assert pid_matches(os.getpid(), "python") or pid_matches(os.getpid(), "pytest")
     assert not pid_matches(os.getpid(), "ft-deadbeef")
     assert not pid_matches(999999, "anything")
+
+
+def test_only_manual_deploy_can_go_live(tmp_path, monkeypatch):
+    from tcc.clusters.freqtrade_cluster import FreqtradeCluster
+    monkeypatch.setenv("TCC_LIVE", "1")
+    monkeypatch.setenv("TCC_EXCHANGE_KEY", "k")
+    monkeypatch.setenv("TCC_EXCHANGE_SECRET", "s")
+    cfg = {"station": {"mode": "live", "exchange": "okx", "pairs": ["BTC/USDT"], "freqtrade_root": str(tmp_path),
+                       "freqtrade_bin": "/bin/true"},
+           "clusters": {"freqtrade": {"base_port": 9100}}, "capital": {"paper_wallet_per_bot": 100},
+           "risk": {}}
+    st = Store(tmp_path / "s.db")
+    ft = FreqtradeCluster(st, cfg, tmp_path)
+    g = random_genome(random.Random(0))
+    for gid, allow in (("aaaaaaaa0000", False), ("bbbbbbbb0000", True)):
+        st.execute("INSERT INTO genomes(id,genome) VALUES(?,?)", (gid, __import__("json").dumps(g)))
+        ft.deploy(gid, g, allow_live=allow)
+    import json as _j
+    confs = {b["name"]: _j.loads(Path(b["config_path"]).read_text()) for b in ft.bots()}
+    assert confs["ft-aaaaaaaa"]["dry_run"] is True and confs["ft-aaaaaaaa"]["exchange"]["key"] == ""
+    assert confs["ft-bbbbbbbb"]["dry_run"] is False and confs["ft-bbbbbbbb"]["exchange"]["key"] == "k"
+    ft.shutdown()
