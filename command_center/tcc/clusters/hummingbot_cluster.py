@@ -140,6 +140,8 @@ import signal  # noqa: E402
 
 import yaml  # noqa: E402
 
+from .freqtrade_cluster import pid_matches  # noqa: E402
+
 PW_SETUP = (
     "import sys; sys.path.insert(0, '.');"
     "from hummingbot.client.config.config_crypt import ETHKeyFileSecretManger, store_password_verification;"
@@ -228,12 +230,8 @@ class HummingbotNodes:
             p = self.procs.get(b["name"])
             if p is not None and p.poll() is None:
                 continue
-            if p is None and b["pid"]:
-                try:
-                    os.kill(b["pid"], 0)
-                    continue
-                except OSError:
-                    pass
+            if p is None and b["pid"] and pid_matches(b["pid"], b["config_path"]):
+                continue
             if b["restarts"] >= 5:
                 self.stop(b["name"], "failed")
                 self.store.event("error", "supervisor", f"{b['name']} failed 5 restarts; giving up "

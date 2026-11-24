@@ -1,0 +1,16 @@
+# Used by BuildKit for command_center/Dockerfile (context = repo root)
+.git
+**/.venv
+**/__pycache__
+**/*.egg-info
+.env
+command_center/.env
+command_center/state
+command_center/state_test.yaml
+user_data/data
+user_data/backtest_results
+user_data/logs
+user_data/*.sqlite*
+docs/
+tests/
+site/

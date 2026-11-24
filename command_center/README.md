@@ -41,8 +41,36 @@ tcc kill / tcc reset-kill   # emergency stop
 tcc plan --capital 20       # what a small account can actually do
 ```
 
-24/7: use `deploy/tcc.service` (systemd). The orchestrator supervises the bots, and systemd
-supervises the orchestrator.
+## Run it 24/7
+
+The station only trades while the machine it's on is awake and online. Pick one:
+
+| Where | Good for | Watch out for |
+|---|---|---|
+| Your desktop + Docker Desktop | starting out, paper trading | sleep/hibernate, Windows updates and reboots pause everything |
+| A small cloud VM (2 vCPU / 4 GB, ~$10-25/mo) | real 24/7, live money | pick a region your exchange allows; keep the API on localhost/Tailscale |
+| Linux box with systemd (`deploy/tcc.service`) | home server / VPS without Docker | — |
+
+### Docker (desktop or VM)
+
+```bash
+git clone -b claude/happy-tesla-r72guz https://github.com/Army161/freqtrade
+cd freqtrade/command_center
+cp .env.example .env            # put your keys in HERE, never in chat or git
+docker compose up -d --build    # first build ~10-15 min (compiles Hummingbot)
+docker compose logs -f          # first start downloads ~2 years of market data
+```
+
+Then open http://localhost:8800.
+
+- `restart: unless-stopped` restarts the container after crashes, and after reboots once Docker is running.
+- On a desktop, turn on Docker Desktop → Settings → General → **Start Docker Desktop when you sign in**.
+- Also set your OS power settings to **never sleep**.
+- State (DB, bot trade history) and market data live in Docker volumes and survive rebuilds.
+- Update: `git pull && docker compose up -d --build`.
+- Stop: `docker compose down`. Your volumes are kept; only `down -v` deletes them.
+
+The orchestrator supervises (and restarts) every bot, and Docker or systemd supervises the orchestrator.
 
 ## Going live (read this first)
 

@@ -17,7 +17,6 @@ import json
 import logging
 import subprocess
 import sys
-from pathlib import Path
 
 
 def main(argv=None):
@@ -68,17 +67,8 @@ def main(argv=None):
         return
 
     if a.cmd == "download":
-        st, rc = cfg["station"], cfg["research"]
-        conf = Path(st["state_dir"]) / "download.json"
-        conf.parent.mkdir(parents=True, exist_ok=True)
-        from .clusters.ft_config import exchange_block
-        conf.write_text(json.dumps({"exchange": exchange_block(st["exchange"], []),
-                                    "stake_currency": st["stake_currency"], "trading_mode": "spot",
-                                    "dataformat_ohlcv": "feather"}))
-        cmd = [st["freqtrade_bin"], "download-data", "-c", str(conf), "--userdir",
-               str(Path(st["freqtrade_root"]) / "user_data"), "--pairs", *st["pairs"],
-               "--timeframes", "5m", "1h", "--days", str(rc["download_days"])]
-        sys.exit(subprocess.call(cmd))
+        from .data import download_cmd
+        sys.exit(subprocess.call(download_cmd(cfg)))
 
     from .orchestrator import Orchestrator
     orch = Orchestrator(cfg)

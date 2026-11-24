@@ -189,3 +189,12 @@ def test_small_account_plan():
     assert small_account_plan(4, 5)["viable"] is False
     assert fractional_kelly(0.55, 0.02, 0.02) == pytest.approx(0.025)
     assert fractional_kelly(0.3, 0.01, 0.02) == 0.0
+
+
+def test_pid_matches_only_real_bot():
+    import os
+
+    from tcc.clusters.freqtrade_cluster import pid_matches
+    assert pid_matches(os.getpid(), "python") or pid_matches(os.getpid(), "pytest")
+    assert not pid_matches(os.getpid(), "ft-deadbeef")
+    assert not pid_matches(999999, "anything")

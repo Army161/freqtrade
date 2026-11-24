@@ -1,0 +1,38 @@
+# Trading Command Center — 24/7 on Docker.
+#
+#   cd freqtrade/command_center
+#   cp .env.example .env          # add keys (never commit .env)
+#   docker compose up -d --build  # first build ~10-15 min (Hummingbot compiles)
+#   open http://localhost:8800
+#
+# restart: unless-stopped + Docker Desktop "start on login" = comes back after crashes/reboots.
+# All Freqtrade bots run as supervised child processes inside this one container.
+name: tcc
+
+services:
+  tcc:
+    build:
+      context: ..
+      dockerfile: command_center/Dockerfile
+    image: tcc:latest
+    container_name: tcc
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - TZ=UTC
+    ports:
+      - "127.0.0.1:8800:8800"     # dashboard/API on this machine only. Use Tailscale for remote access.
+    volumes:
+      - ./station.yaml:/app/freqtrade/command_center/station.yaml:ro
+      - tcc_state:/app/freqtrade/command_center/state        # DB, bot configs, bot trade DBs, logs
+      - tcc_data:/app/freqtrade/user_data/data                # market data
+    stop_grace_period: 60s
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+volumes:
+  tcc_state:
+  tcc_data:

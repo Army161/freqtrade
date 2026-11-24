@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import os
 from pathlib import Path
 
 import yaml
@@ -55,6 +56,11 @@ def load_config(path: str | Path | None = None) -> dict:
     hb = cfg["clusters"]["hummingbot"]
     p = Path(hb["home"]).expanduser()
     hb["home"] = str(p if p.is_absolute() else (ROOT / p).resolve())
+    # container/deployment overrides (the API must listen on 0.0.0.0 inside Docker)
+    if os.environ.get("TCC_API_HOST"):
+        cfg["api"]["host"] = os.environ["TCC_API_HOST"]
+    if os.environ.get("TCC_API_PORT"):
+        cfg["api"]["port"] = int(os.environ["TCC_API_PORT"])
     if st["mode"] not in ("paper", "live"):
         raise ValueError("station.mode must be 'paper' or 'live'")
     return cfg

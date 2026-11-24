@@ -97,6 +97,11 @@ class Orchestrator:
 
     def _research_once(self) -> dict:
         rc, st = self.cfg["research"], self.cfg["station"]
+        if rc.get("refresh_data", True):
+            from .data import refresh
+            self.status["research"] = "refreshing market data"
+            if refresh(self.cfg) != 0:
+                self.store.event("warning", "research", "market data refresh failed; using existing data")
         weights = self.store.kv_get("family_weights", {})
         sc = SearchConfig(
             datadir=str(Path(st["freqtrade_root"]) / "user_data" / "data" / st["exchange"]),

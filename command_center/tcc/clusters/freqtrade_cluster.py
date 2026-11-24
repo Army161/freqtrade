@@ -20,6 +20,18 @@ from ..store import Store
 from .ft_config import build_config
 
 
+def pid_matches(pid: int, marker: str) -> bool:
+    try:
+        cmd = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
+    except OSError:
+        try:  # no /proc (macOS): fall back to existence check
+            os.kill(pid, 0)
+            return not Path("/proc").exists()
+        except OSError:
+            return False
+    return marker in cmd
+
+
 class FtClient:
     def __init__(self, port: int, user: str, pw: str):
         self.base = f"http://127.0.0.1:{port}/api/v1"
@@ -163,11 +175,9 @@ class FreqtradeCluster:
             p = self.procs.get(b["name"])
             alive = p is not None and p.poll() is None
             if not alive and p is None and b["pid"]:
-                try:
-                    os.kill(b["pid"], 0)
-                    alive = True  # adopted process from a previous orchestrator run
-                except OSError:
-                    alive = False
+                # adopt a bot left running by a previous orchestrator, but only if that PID really
+                # is this bot (after a container/host restart PIDs get reused by other processes)
+                alive = pid_matches(b["pid"], b["name"])
             if alive:
                 continue
             now = time.time()
