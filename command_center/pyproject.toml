@@ -1,0 +1,29 @@
+[project]
+name = "tcc"
+version = "0.1.0"
+description = "Trading Command Center: orchestrates Freqtrade + Hummingbot clusters with research, risk and AI agents"
+requires-python = ">=3.11"
+dependencies = ["numba>=0.60", "pandas>=2.2", "numpy>=1.26", "scipy>=1.11", "fastapi>=0.110", "uvicorn>=0.29", "httpx>=0.27", "pyyaml>=6", "anthropic>=0.70"]
+
+[project.scripts]
+tcc = "tcc.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["tcc*"]
+
+[tool.setuptools.package-data]
+tcc = ["dashboard/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "RUF006"]
+ignore = ["E741"]  # o/h/l/c are the conventional OHLC names

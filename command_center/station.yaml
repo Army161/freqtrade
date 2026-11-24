@@ -1,0 +1,74 @@
+# Trading Command Center — station configuration.
+# Paper mode is the default. Live trading requires BOTH station.mode: live AND env TCC_LIVE=1
+# AND exchange keys in env (TCC_EXCHANGE_KEY / TCC_EXCHANGE_SECRET / TCC_EXCHANGE_PASSWORD).
+
+station:
+  name: TCC-01
+  mode: paper                     # paper | live
+  exchange: okx                   # any Freqtrade-supported exchange; data must be downloaded for it
+  stake_currency: USDT
+  pairs: [BTC/USDT, ETH/USDT, SOL/USDT, XRP/USDT, DOGE/USDT, ADA/USDT, LINK/USDT, AVAX/USDT]
+  state_dir: state                # SQLite DB, bot configs/DBs/logs (git-ignored)
+  freqtrade_root: ..              # this freqtrade checkout
+  freqtrade_bin: ../.venv/bin/freqtrade
+
+capital:
+  live_capital: 20                # what you would actually fund; used for the reality-check plan
+  paper_wallet_per_bot: 100       # simulated wallet per paper bot
+  min_order_usd: 5
+
+research:
+  enabled: true
+  interval_minutes: 240           # full research cycle every 4h
+  population: 300                 # genomes per generation
+  generations: 10                 # => ~2,000-3,000 unique strategies tested per cycle
+  n_folds: 4                      # walk-forward in-sample folds
+  oos_frac: 0.25                  # last 25% of history held out, never seen by the search
+  top_k_oos: 40
+  dsr_threshold: 0.90             # deflated Sharpe probability required to pass
+  min_trades: 30
+  workers: 0                      # 0 = cpu_count - 1
+  fee: 0.001
+  slippage: 0.0005
+  confirm_parallel: 2
+  download_days: 730             # longer history => longer OOS window => more decisive DSR
+
+clusters:
+  freqtrade:
+    max_bots: 6
+    base_port: 8101
+    max_open_trades: 3
+    seed_genomes: []              # empty = built-in transparent baselines
+  hummingbot:
+    enabled: true
+    home: ../../army161/hummingbot
+    connector: okx                # research data source
+    paper_connector: kraken       # Hummingbot paper exchange used by paper nodes
+    pairs: [BTC-USDT, ETH-USDT, SOL-USDT]
+    research_jobs: 12
+    research_days: 7
+    # Auto-deployed HB nodes. 0 by default: Hummingbot's built-in paper exchange is not fully
+    # compatible with V2 executors (no trading_rules/_order_tracker; workers/hb_launch.py shims
+    # the first, the second is upstream work). Use a real sub-account or a testnet connector.
+    max_nodes: 0
+
+risk:
+  tick_seconds: 10
+  max_portfolio_drawdown: 0.15
+  daily_loss_limit: 0.05
+  bot_max_drawdown: 0.10
+  max_consecutive_losses: 5
+  max_exposure: 0.9
+
+agents:
+  enabled: true
+  interval_minutes: 60
+  providers: [anthropic, xai]     # tried in order; deterministic rules always as last resort
+  anthropic_model: claude-opus-5-5
+  anthropic_effort: medium
+  xai_model: grok-4
+  min_paper_trades: 15
+
+api:
+  host: 127.0.0.1
+  port: 8800

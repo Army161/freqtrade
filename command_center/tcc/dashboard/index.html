@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trading Command Center</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{--bg:#0b0e14;--panel:#121722;--panel2:#171e2c;--line:#243047;--text:#d8e0ee;--muted:#7d8aa3;
+--green:#2fd28a;--red:#ff5c6c;--amber:#f5b84a;--blue:#58a6ff;--violet:#a78bfa}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:5;flex-wrap:wrap}
+h1{font-size:15px;margin:0;letter-spacing:.04em}
+.badge{padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:.06em}
+.paper{background:#1d3a5f;color:var(--blue)}.live{background:#5a1a22;color:var(--red)}
+.killed{background:var(--red);color:#fff}.ok{background:#123d2b;color:var(--green)}
+.spacer{flex:1}
+button{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer;font:inherit}
+button:hover{border-color:var(--blue)}
+button.danger{background:#3a1218;border-color:#7a2430;color:#ffb3bb;font-weight:700}
+button.small{padding:2px 7px;font-size:11px}
+input{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;width:140px}
+main{padding:14px 16px;display:grid;gap:14px;grid-template-columns:repeat(12,1fr)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;min-width:0}
+.card h2{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:0 0 10px}
+.kpis{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.kpi .l{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.kpi .v{font-size:20px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}
+.span8{grid-column:span 8}.span4{grid-column:span 4}.span12{grid-column:1/-1}.span6{grid-column:span 6}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:5px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--muted);font-weight:600;font-size:11px}
+td.desc{white-space:normal;max-width:380px;color:var(--muted);font-size:12px}
+.pos{color:var(--green)}.neg{color:var(--red)}.mut{color:var(--muted)}
+.scroll{max-height:340px;overflow:auto}
+.funnel{display:flex;gap:6px;flex-wrap:wrap}
+.stage{flex:1;min-width:90px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px}
+.stage b{display:block;font-size:18px}
+.ev{display:flex;gap:8px;padding:4px 0;border-bottom:1px solid var(--line);font-size:12px}
+.ev .t{color:var(--muted);width:62px;flex:none}
+.lv-critical{color:var(--red);font-weight:700}.lv-error{color:var(--red)}.lv-warning{color:var(--amber)}.lv-info{color:var(--text)}
+.note{font-size:12px;color:var(--muted);line-height:1.5}
+.pill{display:inline-block;padding:1px 6px;border-radius:4px;background:var(--panel2);border:1px solid var(--line);font-size:11px}
+pre{white-space:pre-wrap;background:#080a0f;padding:8px;border-radius:6px;max-height:260px;overflow:auto;font-size:11px}
+@media (max-width:900px){.span8,.span4,.span6{grid-column:1/-1}main{padding:12px}}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="station">TRADING COMMAND CENTER</h1>
+  <span id="mode" class="badge paper">PAPER</span>
+  <span id="riskstate" class="badge ok">RISK OK</span>
+  <span class="mut" id="sub"></span>
+  <span class="spacer"></span>
+  <input id="token" placeholder="API token (optional)" type="password">
+  <button onclick="act('/api/research/run')">Run research</button>
+  <button onclick="act('/api/agents/run')">Run agents</button>
+  <button class="danger" onclick="if(confirm('KILL SWITCH: stop entries, force-exit all positions and stop every bot?'))act('/api/kill')">KILL SWITCH</button>
+  <button onclick="if(confirm('Reset kill switch?'))act('/api/reset-kill')">Reset</button>
+</header>
+<main>
+  <section class="kpis" id="kpis"></section>
+
+  <div class="card span8"><h2>Portfolio equity (all bots)</h2><canvas id="eq" height="110"></canvas></div>
+  <div class="card span4"><h2>Risk limits</h2><div id="limits"></div>
+    <h2 style="margin-top:14px">Small-account reality check</h2><div id="plan" class="note"></div></div>
+
+  <div class="card span12"><h2>Bot clusters</h2><div class="scroll"><table id="bots"></table></div></div>
+
+  <div class="card span12"><h2>Research pipeline</h2><div class="funnel" id="funnel"></div>
+    <p class="note">Stage 1 numba screener on walk-forward folds → held-out out-of-sample window + Deflated Sharpe (corrects for the number of strategies tried) → Stage 2 exact Freqtrade backtest → paper incubation → live only by human decision.</p></div>
+
+  <div class="card span12"><h2>Strategy leaderboard — out-of-sample finalists (status shows whether they passed)</h2><div class="scroll"><table id="lb"></table></div></div>
+
+  <div class="card span6"><h2>AI agents</h2><div class="scroll" id="agents"></div></div>
+  <div class="card span6"><h2>Event log</h2><div class="scroll" id="events"></div></div>
+  <div class="card span12" id="logcard" style="display:none"><h2 id="logtitle">Log</h2><pre id="log"></pre></div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const tok=$('token');try{tok.value=localStorage.getItem('tcc_token')||''}catch(e){}
+tok.onchange=()=>{try{localStorage.setItem('tcc_token',tok.value)}catch(e){}};
+const pct=(x,d=2)=>x==null?'–':(x*100).toFixed(d)+'%';
+const usd=x=>x==null?'–':'$'+Number(x).toLocaleString(undefined,{maximumFractionDigits:2});
+const cls=x=>x>0?'pos':x<0?'neg':'mut';
+const ago=t=>{const s=Date.now()/1000-t;return s<60?Math.round(s)+'s':s<3600?Math.round(s/60)+'m':s<86400?Math.round(s/3600)+'h':Math.round(s/86400)+'d'};
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function get(u){const r=await fetch(u);return r.json()}
+async function act(u){const h=tok.value?{Authorization:'Bearer '+tok.value}:{};const r=await fetch(u,{method:'POST',headers:h});
+  const j=await r.json().catch(()=>({}));if(!r.ok)alert(JSON.stringify(j));refresh()}
+let chart;
+function kpi(l,v,c=''){return `<div class="kpi"><div class="l">${l}</div><div class="v ${c}">${v}</div></div>`}
+async function refresh(){
+  try{
+  const [o,bots,lb,ev,ag,eq]=await Promise.all([get('/api/overview'),get('/api/bots'),get('/api/leaderboard?limit=40'),
+    get('/api/events?limit=80'),get('/api/agents?limit=20'),get('/api/equity?hours=72')]);
+  const r=o.risk||{};
+  $('station').textContent=o.station+' · '+o.exchange.toUpperCase();
+  $('mode').textContent=o.mode;$('mode').className='badge '+(o.mode==='LIVE'?'live':'paper');
+  const rs=$('riskstate');
+  if(r.killed){rs.textContent='KILLED: '+r.kill_reason;rs.className='badge killed'}
+  else if(r.halted){rs.textContent='ENTRIES HALTED (daily loss)';rs.className='badge killed'}
+  else{rs.textContent='RISK OK';rs.className='badge ok'}
+  $('sub').textContent=`up ${ago(Date.now()/1000-o.uptime_s)} · research: ${o.status.research} · agents: ${o.status.providers.join(' → ')}`;
+  const running=bots.filter(b=>b.status==='running').length;
+  const gcount=Object.fromEntries(o.genomes.map(g=>[g.status,g.n]));
+  $('kpis').innerHTML=kpi('Equity (paper)',usd(r.equity))+kpi('Drawdown',pct(r.drawdown),cls(r.drawdown))+
+    kpi('Today',pct(r.day_pnl),cls(r.day_pnl))+kpi('Realized',usd(r.realized),cls(r.realized))+
+    kpi('Unrealized',usd(r.unrealized),cls(r.unrealized))+kpi('Exposure',pct(r.exposure,0))+
+    kpi('Open trades',r.open_trades??0)+kpi('Bots running',running+' / '+bots.length)+
+    kpi('Strategies tested',Number(o.runs.trials).toLocaleString())+kpi('Validated (OOS+FT)',(gcount.confirmed||0)+(gcount.live||0));
+  const L=o.limits;$('limits').innerHTML=`<table>
+   <tr><td>Portfolio max drawdown → kill</td><td>${pct(L.max_portfolio_drawdown,0)}</td></tr>
+   <tr><td>Daily loss limit → halt entries</td><td>${pct(L.daily_loss_limit,0)}</td></tr>
+   <tr><td>Bot max drawdown → retire</td><td>${pct(L.bot_max_drawdown,0)}</td></tr>
+   <tr><td>Losing streak → pause bot</td><td>${L.max_consecutive_losses}</td></tr>
+   <tr><td>Max exposure</td><td>${pct(L.max_exposure,0)}</td></tr></table>`;
+  const p=o.plan;$('plan').innerHTML=`With <b>${usd(p.capital)}</b> live capital and ~$5 exchange minimum orders you can hold
+   <b>${p.max_concurrent_positions}</b> position(s) at a time (~${usd(p.stake_per_position)} each). Fees ≈ ${usd(p.fee_per_round_trip_usd)} per round trip.
+   Many bots in parallel are only meaningful in paper mode at this size. No system can guarantee returns; treat any "$20 → $1000s in days" claim as a red flag.`;
+  // equity chart
+  const pts=eq.map(e=>({x:e.ts*1000,y:e.total}));
+  if(!chart){chart=new Chart($('eq'),{type:'line',data:{datasets:[{data:pts,borderColor:'#58a6ff',backgroundColor:'rgba(88,166,255,.08)',fill:true,pointRadius:0,tension:.2}]},
+    options:{animation:false,plugins:{legend:{display:false}},scales:{x:{type:'linear',ticks:{color:'#7d8aa3',callback:v=>new Date(v).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})},grid:{color:'#1b2333'}},y:{ticks:{color:'#7d8aa3'},grid:{color:'#1b2333'}}}}})}
+  else{chart.data.datasets[0].data=pts;chart.update()}
+  // bots
+  $('bots').innerHTML='<tr><th>Bot</th><th>Engine</th><th>Status</th><th>Equity</th><th>P&L</th><th>Open</th><th>Closed W/L</th><th>Streak</th><th>Restarts</th><th>Strategy</th><th></th></tr>'+
+   bots.map(b=>{const s=b.snap||{};const eng=b.engine==='freqtrade'?'Freqtrade':'Hummingbot';
+   const st=s.error?`<span class="neg">unreachable</span>`:esc(b.status)+(s.state&&s.state!=='running'?' / '+esc(s.state):'');
+   return `<tr><td><b>${esc(b.name)}</b></td><td><span class="pill">${eng}</span></td><td>${st}</td><td>${usd(s.equity)}</td>
+   <td class="${cls(s.dd)}">${pct(s.dd)}</td><td>${s.open_trades??'–'}</td><td>${s.wins??'–'}/${s.losses??'–'}</td><td>${s.streak??'–'}</td><td>${b.restarts}</td>
+   <td class="desc">${esc(b.description||'')}</td><td>
+   ${b.engine==='freqtrade'?`<button class="small" onclick="act('/api/bots/${b.name}/pause')">pause</button><button class="small" onclick="act('/api/bots/${b.name}/resume')">resume</button>`:''}
+   <button class="small" onclick="showLog('${b.name}')">log</button>
+   <button class="small" onclick="if(confirm('Retire ${b.name}?'))act('/api/bots/${b.name}/retire')">retire</button></td></tr>`}).join('');
+  // funnel
+  const stages=[['screened','Screened'],['rejected','Rejected'],['oos_pass','Passed OOS+DSR'],['confirmed','Freqtrade-confirmed'],['hb_candidate','HB candidates'],['incubating','Paper incubation'],['live','Live'],['retired','Retired']];
+  $('funnel').innerHTML=stages.map(([k,l])=>`<div class="stage"><span class="mut">${l}</span><b>${(gcount[k]||0).toLocaleString()}</b></div>`).join('');
+  // leaderboard
+  $('lb').innerHTML='<tr><th>ID</th><th>Status</th><th>DSR</th><th>OOS Sharpe</th><th>OOS ret</th><th>OOS DD</th><th>FT profit</th><th>FT trades</th><th>Strategy</th><th></th></tr>'+
+   lb.map(g=>{const o2=g.oos_metrics||{},f=g.ft_metrics||{},im=Array.isArray(g.is_metrics)?{}:(g.is_metrics||{});
+   return `<tr><td>${g.id}</td><td>${g.status}</td><td>${g.dsr!=null?g.dsr.toFixed(2):'–'}</td>
+   <td class="${cls(o2.sharpe??im.sharpe_ratio)}">${(o2.sharpe??im.sharpe_ratio)!=null?(o2.sharpe??im.sharpe_ratio).toFixed(2):'–'}</td>
+   <td class="${cls(o2.ret??im.mtm_return)}">${pct(o2.ret??im.mtm_return)}</td><td>${pct(o2.max_dd??im.max_drawdown_pct)}</td>
+   <td class="${cls(f.profit_total)}">${pct(f.profit_total)}</td><td>${f.trades??'–'}</td><td class="desc">${esc(g.description)}</td>
+   <td>${['confirmed','hb_candidate','oos_pass'].includes(g.status)?`<button class="small" onclick="act('/api/deploy/${g.id}')">deploy (paper)</button>`:''}</td></tr>`}).join('');
+  // agents
+  $('agents').innerHTML=ag.map(a=>{let p;try{p=JSON.parse(a.proposal)}catch(e){p={}}
+    return `<div class="ev"><span class="t">${ago(a.ts)}</span><div><b>${esc(a.agent)}</b> <span class="pill">${esc(a.provider)}</span>
+    ${a.applied?'<span class="pos">applied</span>':'<span class="mut">not applied</span>'}<div class="note">${esc(p.rationale||JSON.stringify(p).slice(0,220))}</div></div></div>`}).join('')||'<p class="note">Agents run every interval; first cycle starts ~1 min after launch.</p>';
+  $('events').innerHTML=ev.map(e=>`<div class="ev"><span class="t">${ago(e.ts)}</span><span class="lv-${e.level}">[${esc(e.source)}] ${esc(e.message)}</span></div>`).join('');
+  }catch(e){$('sub').textContent='API unreachable: '+e}
+}
+async function showLog(n){const j=await get('/api/bots/'+n+'/log');$('logcard').style.display='';$('logtitle').textContent='Log · '+n;$('log').textContent=j.log||'(empty)'}
+refresh();setInterval(refresh,5000);
+</script>
+</body>
+</html>

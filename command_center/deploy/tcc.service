@@ -1,0 +1,24 @@
+# systemd unit for 24/7 operation.  Install:
+#   sudo cp deploy/tcc.service /etc/systemd/system/tcc.service   (edit User + paths first)
+#   sudo systemctl daemon-reload && sudo systemctl enable --now tcc
+#   journalctl -u tcc -f
+# The orchestrator supervises (and restarts) every Freqtrade / Hummingbot child process;
+# systemd supervises the orchestrator. Bots keep running if the orchestrator restarts.
+[Unit]
+Description=Trading Command Center (Freqtrade + Hummingbot clusters)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=trader
+WorkingDirectory=/home/trader/freqtrade/command_center
+EnvironmentFile=-/home/trader/freqtrade/command_center/.env
+ExecStart=/home/trader/freqtrade/.venv/bin/tcc up
+Restart=always
+RestartSec=10
+KillMode=process
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
