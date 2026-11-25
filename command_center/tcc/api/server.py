@@ -101,6 +101,27 @@ def create_app(config_path: str | None = None, start_loops: bool = True) -> Fast
         return {"log": "\n".join(f.read_text(errors="replace").splitlines()[-n:])}
 
     # ---- actions ------------------------------------------------------------------------
+    @app.get("/api/stocks")
+    def stocks_status():
+        return orch.stocks.status()
+
+    @app.post("/api/stocks/scan", dependencies=[Depends(auth)])
+    async def stocks_scan(trade: bool = False):
+        """Run the dip scan now. trade=true also places PAPER bracket orders for BUY signals."""
+        return await orch.stocks_once(trade=trade)
+
+    @app.post("/api/stocks/backtest", dependencies=[Depends(auth)])
+    async def stocks_backtest(years: int = 5):
+        import asyncio
+        res = await asyncio.to_thread(orch.stocks.run_backtest, years)
+        res.pop("recent", None)
+        return res
+
+    @app.post("/api/stocks/flatten", dependencies=[Depends(auth)])
+    async def stocks_flatten():
+        import asyncio
+        return {"closed": await asyncio.to_thread(orch.stocks.flatten)}
+
     @app.post("/api/kill", dependencies=[Depends(auth)])
     async def kill(reason: str = "manual kill switch"):
         await orch.risk.kill(reason)

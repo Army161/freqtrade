@@ -48,6 +48,7 @@ class RiskEngine:
         self.cluster = cluster
         self.state = RiskState(**store.kv_get("risk_state", {}))
         self.last_seen: dict[str, float] = {}
+        self.on_kill: list = []  # extra sync callables run by the kill switch (e.g. flatten stocks)
 
     def save(self):
         self.store.kv_set("risk_state", self.state.__dict__)
@@ -88,6 +89,11 @@ class RiskEngine:
                     self.store.event("error", "risk", f"kill step failed on {b['name']}: {e}")
             await asyncio.sleep(2)
             await asyncio.to_thread(self.cluster.stop, b["name"], "killed")
+        for cb in self.on_kill:
+            try:
+                await asyncio.to_thread(cb)
+            except Exception as e:  # noqa: BLE001
+                self.store.event("error", "risk", f"kill hook {getattr(cb, '__name__', cb)} failed: {e}")
 
     def reset_kill(self) -> None:
         self.state.killed, self.state.kill_reason = False, ""

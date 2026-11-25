@@ -25,6 +25,7 @@ from .research.evolution import SearchConfig, run_search
 from .research.ft_confirm import confirm_candidates
 from .research.genome import genome_id
 from .risk.engine import RiskEngine
+from .stocks.desk import DipDesk
 from .store import Store
 
 log = logging.getLogger("tcc")
@@ -60,6 +61,8 @@ class Orchestrator:
             if k in limits and v < limits[k]:
                 limits[k] = v
         self.risk = RiskEngine(self.store, limits, self.ft)
+        self.stocks = DipDesk(self.store, cfg["stocks"], killed=lambda: self.risk.state.killed)
+        self.risk.on_kill.append(self.stocks.flatten)
         providers = make_providers(cfg["agents"])
         self.director = ResearchDirector(self.store, providers)
         self.officer = RiskOfficer(self.store, providers)
@@ -168,6 +171,27 @@ class Orchestrator:
             self.status["agents"] = "idle"
             self.status["agents_last"] = time.time()
 
+    async def stocks_once(self, trade: bool = True) -> dict:
+        out = await asyncio.to_thread(self.stocks.run_scan)
+        res = {"counts": out["counts"], "regime": out["regime"]}
+        if trade:
+            res["trade"] = await asyncio.to_thread(self.stocks.trade, out)
+            self.store.kv_set("stocks_last_trade", {"ts": time.time(), **res["trade"]})
+        return res
+
+    async def stocks_loop(self):
+        await asyncio.sleep(30)
+        while True:
+            sc = self.cfg["stocks"]
+            if sc["enabled"]:
+                try:
+                    if await asyncio.to_thread(self.stocks.due):
+                        await self.stocks_once(trade=True)
+                except Exception as e:  # noqa: BLE001
+                    log.exception("stocks")
+                    self.store.event("error", "stocks", f"dip desk error: {e}")
+            await asyncio.sleep(sc["check_minutes"] * 60)
+
     async def agent_loop(self):
         await asyncio.sleep(60)
         while True:
@@ -186,7 +210,7 @@ class Orchestrator:
         if not self.risk.state.killed:
             await asyncio.to_thread(self.seed)
         self._tasks = [asyncio.create_task(c()) for c in
-                       (self.risk_loop, self.research_loop, self.agent_loop)]
+                       (self.risk_loop, self.research_loop, self.agent_loop, self.stocks_loop)]
 
     async def stop(self, stop_bots: bool = False):
         for t in self._tasks:

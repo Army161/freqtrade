@@ -38,6 +38,9 @@ def main(argv=None):
     pl.add_argument("--capital", type=float, default=20)
     pl.add_argument("--min-order", type=float, default=5)
     sub.add_parser("download")
+    dp = sub.add_parser("dips", help="stock dip scanner + Alpaca paper trading")
+    dp.add_argument("action", choices=["scan", "trade", "backtest", "status", "flatten"])
+    dp.add_argument("--years", type=int, default=5)
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -69,6 +72,32 @@ def main(argv=None):
     if a.cmd == "download":
         from .data import download_cmd
         sys.exit(subprocess.call(download_cmd(cfg)))
+
+    if a.cmd == "dips":
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        from .orchestrator import Orchestrator
+        orch = Orchestrator(cfg)
+        d = orch.stocks
+        if a.action == "scan" or a.action == "trade":
+            out = d.run_scan()
+            print(f"scan {out['date']}  {out['counts']}  regime={out['regime']}")
+            for r in out["rows"]:
+                plan = f"  stop {r['stop']} target {r['target']}" if r["status"] == "BUY" else ""
+                print(f"  {r['symbol']:6s} {r['status']:13s} {r['close']:>9.2f} {r['dd_from_high']:+5.0%} "
+                      f"rsi {r['rsi']:4.0f}  {r['why']}{plan}")
+            if a.action == "trade":
+                print(json.dumps(d.trade(out), indent=2, default=str))
+        elif a.action == "backtest":
+            res = d.run_backtest(a.years)
+            res.pop("recent", None)
+            print(json.dumps(res, indent=2, default=str))
+        elif a.action == "status":
+            st = d.status()
+            st.pop("scan", None)
+            print(json.dumps(st, indent=2, default=str))
+        elif a.action == "flatten":
+            print(d.flatten())
+        return
 
     from .orchestrator import Orchestrator
     orch = Orchestrator(cfg)

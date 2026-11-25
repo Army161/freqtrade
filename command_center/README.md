@@ -41,6 +41,42 @@ tcc kill / tcc reset-kill   # emergency stop
 tcc plan --capital 20       # what a small account can actually do
 ```
 
+## Stock dip desk (Alpaca paper)
+
+![dip desk](docs/dip_desk.png)
+
+- **What it does:** scans your watchlist once per trading day after the close (`station.yaml → stocks.universe`). It separates **stabilizing dips** from **falling knives**:
+
+  | Status | Meaning |
+  |---|---|
+  | BUY | 15%+ below the 52-week high, no new low in 5 sessions, a higher low, back above the 20-day average, RSI recovered from oversold |
+  | stabilizing | the higher low is in place, but no BUY confirmation yet |
+  | falling knife | a new 52-week low in the last 5 sessions, or below a falling 20-day average |
+  | excluded | under $5, under $20M/day traded, or a leveraged/inverse ETF |
+
+- **Orders:** BUY signals become **Alpaca paper bracket orders**: market entry, a stop below the swing low and a target at 2× the risk.
+- **Sizing:** 1% of equity at risk per trade, halved when SPY is below its 200-day average. At most 10% per position and 8 positions.
+- **Exits:** positions are closed after 20 sessions.
+- **Safeguards:** the station kill switch also flattens all stock positions. New entries stop if paper equity falls 10% from its peak.
+- **Paper only:** the code only talks to `paper-api.alpaca.markets`.
+- **Setup:** create a free account at alpaca.markets → Paper Trading → API Keys. Put `ALPACA_API_KEY_ID` and `ALPACA_API_SECRET_KEY` in `.env`.
+- **Commands:**
+  - `tcc dips scan`, `tcc dips trade`, `tcc dips backtest`, `tcc dips status`, `tcc dips flatten`
+  - or the buttons on the dashboard
+
+**Backtest of this exact rule** (2023–2026, 46 names):
+
+| Metric | Value |
+|---|---|
+| Trades | 95 |
+| Win rate | 50% |
+| Average trade | +2.9% (median −0.1%) |
+| Profit factor | 1.5 |
+| By year | 2023 +3.8%, 2024 +8.4%, 2025 +1.5%, 2026 **−2.3%** |
+| SPY buy-and-hold, same span | +84% |
+
+The universe is today's popular names, so these results carry survivorship bias. Treat the desk as a timing filter to test on paper, not proof of an edge.
+
 ## Run it 24/7
 
 The station only trades while the machine it's on is awake and online. Pick one:

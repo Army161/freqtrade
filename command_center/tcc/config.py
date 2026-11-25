@@ -34,6 +34,20 @@ DEFAULTS = {
     "agents": {"enabled": True, "interval_minutes": 60, "providers": ["anthropic", "xai"],
                "anthropic_model": "claude-opus-5-5", "anthropic_effort": "medium",
                "xai_model": "grok-4", "min_paper_trades": 15},
+    "stocks": {
+        "enabled": True, "auto_trade": True,        # paper only (Alpaca paper endpoint is hard-coded)
+        "check_minutes": 15, "max_positions": 8, "max_new_per_day": 3, "risk_per_trade": 0.01,
+        "max_position_pct": 0.10, "max_drawdown": 0.10,
+        "params": {},                               # overrides for DipParams (see tcc/stocks/signals.py)
+        "universe": {
+            "index": ["SPY", "QQQ", "IWM", "VTI"],
+            "megacap": ["AAPL", "MSFT", "AMZN", "GOOGL", "META", "NVDA", "TSM", "AVGO", "AMD", "ORCL",
+                        "CRM", "NOW", "PLTR", "NFLX", "TSLA", "MU"],
+            "watchlist": ["NBIS", "CRWV", "IREN", "RKLB", "ASTS", "HOOD", "SOFI", "SNOW", "DDOG", "MDB",
+                          "NET", "APP", "PANW", "DELL", "INTC", "LITE", "COHR", "CRDO", "VRT", "BE",
+                          "IONQ", "OKLO", "HIMS", "CAT", "SNDK", "CIFR", "SPCX", "ANT"],
+        },
+    },
     "api": {"host": "127.0.0.1", "port": 8800},
 }
 

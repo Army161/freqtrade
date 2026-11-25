@@ -74,6 +74,18 @@ pre{white-space:pre-wrap;background:#080a0f;padding:8px;border-radius:6px;max-he
 
   <div class="card span12"><h2>Strategy leaderboard — out-of-sample finalists (status shows whether they passed)</h2><div class="scroll"><table id="lb"></table></div></div>
 
+  <div class="card span12"><h2>Stock dip desk · Alpaca PAPER</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <button onclick="act('/api/stocks/scan')">Scan now</button>
+      <button onclick="act('/api/stocks/scan?trade=true')">Scan + paper trade</button>
+      <button onclick="act('/api/stocks/backtest')">Backtest rule (5y)</button>
+      <button onclick="if(confirm('Close ALL paper stock positions?'))act('/api/stocks/flatten')">Flatten stocks</button>
+    </div>
+    <div id="stk_head" class="note"></div>
+    <div class="scroll"><table id="stk_pos"></table></div>
+    <div class="scroll" style="margin-top:8px"><table id="stk_scan"></table></div>
+    <div id="stk_bt" class="note" style="margin-top:8px"></div></div>
+
   <div class="card span6"><h2>AI agents</h2><div class="scroll" id="agents"></div></div>
   <div class="card span6"><h2>Event log</h2><div class="scroll" id="events"></div></div>
   <div class="card span12" id="logcard" style="display:none"><h2 id="logtitle">Log</h2><pre id="log"></pre></div>
@@ -153,6 +165,22 @@ async function refresh(){
   $('events').innerHTML=ev.map(e=>`<div class="ev"><span class="t">${ago(e.ts)}</span><span class="lv-${e.level}">[${esc(e.source)}] ${esc(e.message)}</span></div>`).join('');
   }catch(e){$('sub').textContent='API unreachable: '+e}
 }
+const STC={BUY:'pos',stabilizing:'',falling_knife:'neg',no_dip:'mut',excluded:'mut'};
+async function refreshStocks(){
+  try{
+  const d=await get('/api/stocks'); const sc=d.scan||{}; const a=d.account;
+  const rg=sc.regime?` · SPY ${sc.regime.spy_close} vs 200-day ${sc.regime.spy_sma200} → <b class="${sc.regime.risk_on?'pos':'neg'}">${sc.regime.risk_on?'risk-on':'risk-off (half size)'}</b>`:'';
+  $('stk_head').innerHTML=(d.configured?(a?`Paper equity <b>${usd(+a.equity)}</b> · cash ${usd(+a.cash)} · buying power ${usd(+a.buying_power)}`:`<span class="neg">Alpaca error: ${esc(d.account_error||'')}</span>`)
+     :'<span class="neg">No Alpaca paper keys yet</span> — scanning works; add ALPACA_API_KEY_ID / ALPACA_API_SECRET_KEY to .env to paper trade.')
+     +(sc.date?` · last scan ${esc(sc.date)} (${ago(sc.ts)} ago): BUY ${sc.counts.BUY} · stabilizing ${sc.counts.stabilizing} · falling knives ${sc.counts.falling_knife}`:' · no scan yet')+rg;
+  const ps=d.positions||[];
+  $('stk_pos').innerHTML=ps.length?'<tr><th>Position</th><th>Qty</th><th>Entry</th><th>Price</th><th>P&L</th></tr>'+ps.map(p=>`<tr><td><b>${esc(p.symbol)}</b></td><td>${p.qty}</td><td>${usd(+p.avg_entry_price)}</td><td>${usd(+p.current_price)}</td><td class="${cls(+p.unrealized_pl)}">${usd(+p.unrealized_pl)} (${pct(+p.unrealized_plpc)})</td></tr>`).join(''):'';
+  $('stk_scan').innerHTML='<tr><th>Symbol</th><th>Status</th><th>Close</th><th>From 52w high</th><th>RSI</th><th>vs 20-day</th><th>Stop</th><th>Target</th><th>Why</th></tr>'+
+    (sc.rows||[]).map(r=>`<tr><td><b>${esc(r.symbol)}</b></td><td class="${STC[r.status]||''}">${r.status}</td><td>${usd(r.close)}</td><td class="neg">${pct(r.dd_from_high,0)}</td><td>${r.rsi}</td><td class="${cls(r.vs_sma20)}">${pct(r.vs_sma20,1)}</td><td>${r.stop??'–'}</td><td>${r.target??'–'}</td><td class="desc">${esc(r.why)}</td></tr>`).join('');
+  const b=d.backtest; $('stk_bt').innerHTML=b&&b.trades?`Backtest of this exact rule (${esc(b.first)} → ${esc(b.last)}): ${b.trades} trades, win rate ${pct(b.win_rate,0)}, avg trade ${pct(b.avg_return,1)} (median ${pct(b.median_return,1)}), profit factor ${b.profit_factor}. SPY buy-and-hold over the same span: ${pct(b.spy_buy_hold,0)}. Universe is today's popular names, so results carry survivorship bias.`:'';
+  }catch(e){$('stk_head').textContent='stock desk unavailable: '+e}
+}
+refreshStocks();setInterval(refreshStocks,30000);
 async function showLog(n){const j=await get('/api/bots/'+n+'/log');$('logcard').style.display='';$('logtitle').textContent='Log · '+n;$('log').textContent=j.log||'(empty)'}
 refresh();setInterval(refresh,5000);
 </script>
